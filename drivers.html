@@ -19,15 +19,14 @@ tr.click{cursor:pointer}tr.click:hover{background:var(--bg)}tr.sel{background:va
 svg text{fill:var(--mut);font-size:11px}.legend span{display:inline-block;margin-right:12px;font-size:12px;color:var(--mut)}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px}
 .row{display:grid;grid-template-columns:1fr;gap:12px}@media(min-width:760px){.row2{grid-template-columns:1fr 1fr}}
-a{color:var(--blue)}
+a{color:var(--blue)}.sug{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.sug button{font:inherit;padding:6px 12px;border-radius:18px;border:1px solid var(--line);background:var(--bg);color:var(--fg);cursor:pointer}.sug button:hover{border-color:var(--acc)}
+.aw{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}.aw div{background:var(--bg);border-radius:10px;padding:10px}.aw b{display:block}.aw span{color:var(--mut);font-size:12px}
 </style></head><body><div class="wrap">
 <h1>🏁 ACC · Гонщики</h1>
-<div class="tabs"><div class="tab on" data-t="drv">Гонщик</div><div class="tab" data-t="rank">Рейтинг</div><div class="tab" data-t="rec">Рекорди трас</div></div>
-<div id="drv">
- <div class="card"><div class="mut" style="margin-bottom:6px">Обери гонщика (почни писати ім'я)</div>
- <input id="q" list="dl" placeholder="Ім'я гонщика…" autocomplete="off"><datalist id="dl"></datalist></div>
- <div id="out"></div>
-</div>
+<div class="card"><div class="mut" style="margin-bottom:6px">🔎 Введи своє ім'я або нікнейм — відкриється твоя статистика</div>
+<input id="q" placeholder="Напр.: Oleh, Borodii, Hosh…" autocomplete="off"><div id="sug" class="sug"></div></div>
+<div class="tabs"><div class="tab on" data-t="race">Гонка</div><div class="tab" data-t="drv">Гонщик</div><div class="tab" data-t="rank">Рейтинг</div><div class="tab" data-t="rec">Рекорди трас</div></div>
+<div id="race"></div><div id="drv" hidden><div id="out"><div class="card mut">Введи своє ім'я в полі вище.</div></div></div>
 <div id="rank" hidden></div><div id="rec" hidden></div>
 <p class="mut" style="font-size:12px">Дані — гонки, записані колектором. Рейтинг — парний Elo за порядком фінішу (старт 1500). «Індекс темпу» — медіана чистих кіл до найшвидшого в гонці (100 = найшвидший темп).</p>
 </div>
@@ -39,8 +38,14 @@ const fs=(s,d=1)=>s==null?"—":(s>=0?"+":"")+s.toFixed(d);
 const esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 const R={};D.races.forEach(r=>R[r.sid]=r);
 const byName={};D.drivers.forEach(d=>byName[d.name]=d);
-const dl=$("dl");D.drivers.forEach(d=>{const o=document.createElement("option");o.value=d.name;o.label=(d.member?"★ ":"")+d.races.length+" гонок";dl.appendChild(o)});
-document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x===t));["drv","rank","rec"].forEach(k=>$(k).hidden=k!==t.dataset.t)});
+function showTab(t){document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x.dataset.t===t));["race","drv","rank","rec"].forEach(k=>$(k).hidden=k!==t)}
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>showTab(t.dataset.t));
+const dn=s=>s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+function pick(name){$("q").value=name;$("sug").innerHTML="";showTab("drv");render(name);window.scrollTo(0,0)}
+function search(){const v=dn($("q").value.trim());const sug=$("sug");sug.innerHTML="";if(!v)return[];
+ const tk=v.split(/\s+/);const m=D.drivers.filter(d=>{const n=dn(d.name);return tk.every(t=>n.includes(t))}).sort((a,b)=>(b.member-a.member)||(b.races.length-a.races.length)).slice(0,10);
+ m.forEach(d=>{const b=document.createElement("button");b.textContent=(d.member?"★ ":"")+d.name+" · "+d.races.length;b.onclick=()=>pick(d.name);sug.appendChild(b)});
+ if(!m.length)sug.innerHTML='<span class="mut">Нікого не знайдено — перевір написання (як у грі).</span>';return m}
 
 function lineChart(series,o){ // series:[{name,color,pts:[[x,y]],dash}]
  const W=o.w||640,H=o.h||200,L=44,Rr=10,T=10,B=24;const all=series.flatMap(s=>s.pts).filter(p=>p[1]!=null);
@@ -102,7 +107,7 @@ function render(name){
  h+=`</table></div></div>`;
  out.innerHTML=h;
  out.querySelectorAll("tr[data-s]").forEach(tr=>tr.onclick=()=>detail(d,+tr.dataset.s,tr));
- out.querySelectorAll("tr[data-o]").forEach(tr=>tr.onclick=()=>{$("q").value=tr.dataset.o;render(tr.dataset.o);window.scrollTo(0,0)});
+ out.querySelectorAll("tr[data-o]").forEach(tr=>tr.onclick=()=>pick(tr.dataset.o));
  detail(d,rs[rs.length-1].sid);
 }
 function detail(d,sid,tr){
@@ -134,7 +139,7 @@ function detail(d,sid,tr){
 function rankView(min){const ds=D.drivers.filter(d=>d.races.length>=min).sort((a,b)=>b.elo-a.elo);let h=`<div class="card"><h2>Рейтинг гонщиків</h2><div style="margin-bottom:8px"><select id="rmin"><option value="1">Усі гонщики</option><option value="2">Від 2 гонок</option><option value="3">Від 3 гонок</option></select></div><div class="sc"><table><tr><th class="n">#</th><th>Гонщик</th><th class="n">Рейтинг</th><th class="n">Гонок</th><th class="n">Перемог</th><th class="n">Подіумів</th><th class="n">Сер. місце</th><th class="n">Індекс темпу</th></tr>`;
  ds.forEach((d,i)=>{const n=d.races.length,w=d.races.filter(r=>r.pos===1).length,p=d.races.filter(r=>r.pos<=3).length,a=d.races.reduce((s,r)=>s+r.pos,0)/n,ix=d.races.map(r=>r.idx).filter(Boolean);
  h+=`<tr class="click" data-n="${esc(d.name)}"><td class="n">${i+1}</td><td>${d.member?"★ ":""}${esc(d.name)}</td><td class="n"><b>${d.elo}</b></td><td class="n">${n}</td><td class="n">${w}</td><td class="n">${p}</td><td class="n">${a.toFixed(1)}</td><td class="n">${ix.length?(ix.reduce((x,y)=>x+y,0)/ix.length).toFixed(1):"—"}</td></tr>`});
- h+="</table></div></div>";$("rank").innerHTML=h;$("rmin").value=String(min);$("rmin").onchange=e=>rankView(+e.target.value);$("rank").querySelectorAll("tr[data-n]").forEach(tr=>tr.onclick=()=>{document.querySelector('.tab[data-t=drv]').click();$("q").value=tr.dataset.n;render(tr.dataset.n);window.scrollTo(0,0)})}
+ h+="</table></div></div>";$("rank").innerHTML=h;$("rmin").value=String(min);$("rmin").onchange=e=>rankView(+e.target.value);$("rank").querySelectorAll("tr[data-n]").forEach(tr=>tr.onclick=()=>pick(tr.dataset.n))}
 rankView(2);
 // рекорди
 (function(){let h="";Object.entries(D.records).forEach(([t,r])=>{h+=`<div class="card"><h2>${esc(t)}</h2><div class="sc"><table><tr><th>Рекорд</th><th class="n">Результат</th><th>Хто</th><th>Коли</th></tr>`;
@@ -142,8 +147,47 @@ rankView(2);
  r.s.forEach((s,k)=>{if(s)h+=`<tr><td>Сектор ${k+1}</td><td class="n">${(s[0]/1000).toFixed(3)}</td><td>${esc(s[1])}</td><td>${s[2]}</td></tr>`});
  if(r.pit)h+=`<tr><td>Найшвидший піт-стоп</td><td class="n">${r.pit[0]} с</td><td>${esc(r.pit[1])}</td><td>${r.pit[2]}</td></tr>`;
  h+="</table></div></div>"});$("rec").innerHTML=h})();
-$("q").addEventListener("change",e=>render(e.target.value.trim()));
-$("q").addEventListener("input",e=>{if(byName[e.target.value.trim()])render(e.target.value.trim())});
+$("q").addEventListener("input",()=>{const m=search();if(m.length===1&&dn(m[0].name)===dn($("q").value.trim()))pick(m[0].name)});
+$("q").addEventListener("keydown",e=>{if(e.key==="Enter"){const m=search();if(m.length)pick(m[0].name)}});
+// загальна статистика гонки
+const PAL=["#e6194b","#3cb44b","#4363d8","#f58231","#911eb4","#17a2b8","#d946ef","#84cc16","#a16207","#64748b"];
+function raceView(sid){
+ const ri=R[sid];const rows=[];D.drivers.forEach(d=>{const x=d.races.find(r=>r.sid===sid);if(x)rows.push({d,x})});rows.sort((a,b)=>a.x.pos-b.x.pos);
+ const sum=f=>rows.reduce((s,r)=>s+f(r.x),0);
+ const fast=rows.filter(r=>r.x.best).sort((a,b)=>a.x.best-b.x.best)[0];
+ const pits=rows.flatMap(r=>r.x.pits.map(p=>({n:r.d.name,t:p[1]}))).sort((a,b)=>a.t-b.t);
+ const avgPit=pits.length?pits.reduce((s,p)=>s+p.t,0)/pits.length:null;
+ const top=(f,min)=>{const a=rows.filter(r=>f(r)!=null).sort((a,b)=>f(b)-f(a))[0];return a&&f(a)>(min||0)?a:null};
+ const gain=top(r=>r.x.grid?r.x.grid-r.x.pos:null,0),start1=top(r=>r.x.grid&&r.x.p1?r.x.grid-r.x.p1:null,0),
+  mov=top(r=>r.x.gained,0),acc=top(r=>r.x.acc,0),pace=rows.filter(r=>r.x.idx).sort((a,b)=>a.x.idx-b.x.idx)[0];
+ const clean=rows.filter(r=>r.x.laps>=ri.laps-1&&r.x.acc===0).length;
+ const shake=rows.filter(r=>r.x.grid&&r.x.p1).reduce((s,r)=>s+Math.abs(r.x.grid-r.x.p1),0)/2;
+ let h=`<div class="card"><select id="rsel">${D.races.slice().reverse().map(r=>`<option value="${r.sid}" ${r.sid===sid?"selected":""}>${r.date} ${r.time} · ${esc(r.track)} · ${r.cars} машин · сесія ${r.sid}</option>`).join("")}</select></div>
+ <div class="card"><h2>${esc(ri.track)} · ${ri.date} · переможець ${esc(ri.winner)}</h2><div class="tiles">
+ <div class="tile"><b>${rows.length}</b><span>гонщиків · ${ri.laps} кіл</span></div>
+ <div class="tile"><b>${fast?fmt(fast.x.best):"—"}</b><span>найшвидше коло${fast?" · "+esc(fast.d.name):""}</span></div>
+ <div class="tile"><b>${sum(x=>x.acc)}</b><span>аварій · чисто без аварій: ${clean}</span></div>
+ <div class="tile"><b>${pits.length}</b><span>піт-стопів${avgPit?" · середній "+avgPit.toFixed(1)+" с":""}</span></div>
+ <div class="tile"><b>${sum(x=>x.gained)}</b><span>обгонів (виграних позицій)</span></div>
+ <div class="tile"><b>${ri.grid?shake.toFixed(0):"—"}</b><span>позицій змінилось на 1-му колі</span></div></div></div>`;
+ const aw=[];
+ if(fast)aw.push(["⚡ Найшвидше коло",fast.d.name,fmt(fast.x.best)]);
+ if(pace)aw.push(["📈 Найкращий темп",pace.d.name,"індекс "+pace.x.idx]);
+ if(gain)aw.push(["🚀 Найбільше піднявся (решітка → фініш)",gain.d.name,"+"+(gain.x.grid-gain.x.pos)+" (з "+gain.x.grid+" на "+gain.x.pos+")"]);
+ if(start1)aw.push(["🏁 Найкращий старт",start1.d.name,"+"+(start1.x.grid-start1.x.p1)+" позицій на 1-му колі"]);
+ if(mov)aw.push(["🔁 Найбільше обгонів",mov.d.name,"+"+mov.x.gained+" позицій"]);
+ if(pits.length)aw.push(["🔧 Найшвидший піт-стоп",pits[0].n,pits[0].t+" с"]);
+ if(acc)aw.push(["💥 Найбільше аварій",acc.d.name,String(acc.x.acc)]);
+ if(aw.length)h+=`<div class="card"><h2>Відзнаки гонки</h2><div class="aw">${aw.map(a=>`<div><span>${a[0]}</span><b>${esc(a[1])}</b><span>${esc(a[2])}</span></div>`).join("")}</div></div>`;
+ const t10=rows.slice(0,10);
+ h+=`<div class="card"><h2>Позиції по колах (топ-10 фінішу)</h2>${lineChart(t10.map((r,i)=>({name:r.d.name,color:PAL[i],w:1.8,pts:r.x.seq.filter(q=>q[4]).map(q=>[q[0],q[4]])})),{h:240,rev:1,y0:1,xt:v=>v,yf:v=>v.toFixed(0)})}</div>`;
+ const fm=Object.entries(ri.field).map(([k,v])=>[+k,v/1000]);const cap=fm.length?fm.map(p=>p[1]).sort((a,b)=>a-b)[Math.floor(fm.length/2)]*1.08:1e9;
+ h+=`<div class="card"><h2>Темп поля (медіана чистих кіл)</h2>${lineChart([{name:"медіана поля",color:"var(--blue)",pts:fm.filter(p=>p[1]<=cap)}],{h:170,yf:v=>{const m=Math.floor(v/60);return m+":"+(v-m*60).toFixed(1).padStart(4,"0")}})}</div>`;
+ h+=`<div class="card"><h2>Результати <span class="mut" style="font-weight:400;font-size:13px">— натисни гонщика, щоб відкрити його статистику</span></h2><div class="sc"><table><tr><th class="n">#</th><th>Гонщик</th><th>Авто</th><th class="n">Кіл</th><th class="n">Відст.</th><th class="n">Найкраще</th><th class="n">Решітка</th><th class="n">Старт</th><th class="n">Піти</th><th class="n">Аварії</th></tr>`;
+ rows.forEach(r=>{const x=r.x,st=x.grid&&x.p1?x.grid-x.p1:null;h+=`<tr class="click" data-n="${esc(r.d.name)}"><td class="n"><b>${x.pos}</b></td><td>${r.d.member?"★ ":""}${esc(r.d.name)}</td><td>${esc(x.car)}</td><td class="n">${x.laps}</td><td class="n">${x.pos===1?"—":x.gap==null?"-"+x.down+" кл":fs(x.gap,1)}</td><td class="n">${fmt(x.best)}</td><td class="n">${x.grid||"—"}</td><td class="n ${st>0?"g":st<0?"r":""}">${st==null?"—":fs(st,0)}</td><td class="n">${x.pits.length}</td><td class="n">${x.acc}</td></tr>`});
+ h+="</table></div></div>";$("race").innerHTML=h;$("rsel").onchange=e=>raceView(+e.target.value);
+ $("race").querySelectorAll("tr[data-n]").forEach(tr=>tr.onclick=()=>pick(tr.dataset.n))}
+if(D.races.length)raceView(D.races[D.races.length-1].sid);
 let start=decodeURIComponent(location.hash.slice(1));if(!byName[start]){try{start=localStorage.getItem("acc_drv")||""}catch(e){}}
-if(byName[start]){$("q").value=start;render(start)}
+if(byName[start]){pick(start)}
 </script></body></html>
